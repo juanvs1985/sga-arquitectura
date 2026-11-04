@@ -2,3 +2,5 @@
 *.tmp
 node_modules/
 .env
+informe/informe.html
+informe/.pasada1.pdf

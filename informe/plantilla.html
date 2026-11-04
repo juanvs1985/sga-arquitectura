@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+<meta charset="utf-8">
+<title>Arquitectura del SGA · Informe</title>
+<style>
+@page { size: letter; margin: 2.3cm 2.3cm 2.2cm 2.3cm; }
+@page horizontal { size: letter landscape; margin: 1.8cm 2cm; }
+:root { --navy: #1F3864; --ink: #1d2433; --muted: #5a6475; --line: #c9d1de; --soft: #eef2f7; --gold: #A87A1E; }
+* { box-sizing: border-box; }
+html { font-family: "Carlito", "Calibri", sans-serif; font-size: 11pt; color: var(--ink); line-height: 1.42; }
+body { margin: 0; counter-reset: h2 tabla; }
+p, li { text-align: justify; hyphens: auto; }
+h1, h2, h3, h4 { font-family: "Caladea", "Cambria", serif; color: var(--navy); line-height: 1.2; break-after: avoid; }
+h2 { font-size: 17pt; margin: 0 0 10pt; padding-bottom: 4pt; border-bottom: 1.5pt solid var(--navy); break-before: page; counter-increment: h2; counter-reset: h3; }
+h2:not(.nonum)::before { content: counter(h2) ". "; }
+h2.nonum { counter-increment: none; }
+td.id { white-space: nowrap; }
+h3 { font-size: 13pt; margin: 16pt 0 6pt; counter-increment: h3; }
+h3:not(.nonum)::before { content: counter(h2) "." counter(h3) " "; }
+h4 { font-size: 11.5pt; margin: 12pt 0 4pt; color: var(--ink); }
+a { color: var(--navy); word-break: break-all; }
+code { font-family: "DejaVu Sans Mono", monospace; font-size: 8.6pt; background: var(--soft); padding: 0 2pt; border-radius: 2pt; word-break: break-word; }
+pre { font-family: "DejaVu Sans Mono", monospace; font-size: 8pt; background: var(--soft); border: 0.5pt solid var(--line); padding: 8pt; white-space: pre-wrap; line-height: 1.35; }
+ul, ol { padding-left: 18pt; margin: 4pt 0 8pt; }
+li { margin: 2pt 0; }
+hr { border: 0; border-top: 0.5pt solid var(--line); margin: 14pt 0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 9pt; line-height: 1.3; margin: 2pt 0 12pt; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th { background: var(--navy); color: #fff; text-align: left; font-weight: 700; padding: 4pt 5pt; vertical-align: bottom; }
+td { padding: 3.5pt 5pt; border-bottom: 0.5pt solid var(--line); vertical-align: top; text-align: left; }
+tbody tr:nth-child(even) td { background: #f6f8fb; }
+td p, td li { text-align: left; }
+.tab-num, .fig-num { font-weight: 700; margin: 10pt 0 0; text-align: left; break-after: avoid; }
+.tab-tit, .fig-tit { font-style: italic; margin: 0 0 4pt; text-align: left; break-after: avoid; }
+
+figure.fig { margin: 10pt 0 14pt; break-inside: avoid; text-align: center; }
+figure.fig img { display: block; margin: 6pt auto; max-width: 100%; object-fit: contain; }
+figure.fig .fig-num, figure.fig .fig-tit { text-align: left; }
+.fig-nota { font-size: 9pt; color: var(--muted); text-align: left; margin: 2pt 0 0; }
+section.horizontal { page: horizontal; break-before: page; break-after: page; }
+section.horizontal figure.fig { margin: 0; }
+section.horizontal img { max-height: 15.2cm; width: 100% !important; }
+
+.portada { height: 23.3cm; display: flex; flex-direction: column; text-align: center; }
+.portada p { text-align: center; }
+.portada .inst { font-family: "Caladea", serif; font-size: 15pt; color: var(--navy); font-weight: 700; margin: 0.4cm 0 2pt; }
+.portada .inst2 { font-size: 11.5pt; color: var(--muted); margin: 0; }
+.portada .titulo-bloque { margin: auto 0; padding: 0.6cm 0; border-top: 2pt solid var(--navy); border-bottom: 2pt solid var(--navy); }
+.portada .asig { font-size: 12pt; letter-spacing: 0.04em; text-transform: uppercase; color: var(--gold); font-weight: 700; margin: 0 0 8pt; }
+.portada .titulo { font-size: 24pt; margin: 0 0.6cm 10pt; }
+.portada .subtitulo { font-size: 12pt; color: var(--muted); margin: 0; }
+.portada .datos { margin: 0 auto 0.6cm; text-align: left; font-size: 12pt; }
+.portada .datos p { text-align: left; margin: 3pt 0; }
+.portada .datos span { display: inline-block; width: 3cm; color: var(--muted); }
+
+.toc-pagina h2 { break-before: page; }
+#toc { list-style: none; padding: 0; margin: 0; }
+#toc li { display: flex; align-items: baseline; gap: 4pt; margin: 0; text-align: left; }
+#toc li.n2 { font-weight: 700; margin-top: 6pt; }
+#toc li.n3 { padding-left: 16pt; font-size: 10pt; }
+#toc .t { flex: 0 1 auto; }
+#toc .dots { flex: 1 1 auto; border-bottom: 1pt dotted var(--muted); transform: translateY(-3pt); min-width: 12pt; }
+#toc .pg { flex: 0 0 auto; min-width: 18pt; text-align: right; font-variant-numeric: tabular-nums; }
+
+.referencias p { padding-left: 1.27cm; text-indent: -1.27cm; text-align: left; margin: 0 0 6pt; }
+.pendiente { background: #fff1c2; padding: 1pt 3pt; font-weight: 700; }
+.capturas { display: block; }
+figure.cap { margin: 6pt 0 12pt; break-inside: avoid; }
+figure.cap img { display: block; max-width: 100%; max-height: 20cm; margin: 0 auto; border: 0.5pt solid var(--line); }
+figure.cap figcaption { font-size: 8.5pt; color: var(--muted); text-align: center; margin-top: 2pt; }
+h3.anexo-p { break-before: page; }
+h3.anexo-p:first-of-type { break-before: auto; }
+pre.prompt { break-inside: auto; }
+</style>
+</head>
+<body>
+{{CUERPO}}
+<script>
+// Títulos de tabla al estilo APA para las tablas que no tienen uno propio
+(function () {
+  let n = 0;
+  document.querySelectorAll("table").forEach(t => {
+    if (t.closest(".anexo")) return;
+    n++;
+    let prev = t.previousElementSibling, titulo = "";
+    let h = t.previousElementSibling;
+    while (h && !/^H[234]$/.test(h.tagName)) h = h.previousElementSibling;
+    if (h) titulo = h.textContent.replace(/^[\d.]+\s*/, "");
+    if (prev && prev.tagName === "P" && prev.textContent.trim().endsWith(":") && prev.textContent.length < 140) titulo = prev.textContent.trim().replace(/:$/, "");
+    const num = document.createElement("p"); num.className = "tab-num"; num.textContent = "Tabla " + n;
+    const tit = document.createElement("p"); tit.className = "tab-tit"; tit.textContent = titulo || "Tabla";
+    t.before(num, tit);
+  });
+  document.querySelectorAll("td").forEach(td => { if (/^(RF|RNF|CU|ADR|RN|R|S|P)-\d+$/.test(td.textContent.trim())) td.classList.add("id"); });
+  // Numeración de secciones (para el índice) y contenido
+  let a = 0, b = 0;
+  const toc = document.getElementById("toc");
+  document.querySelectorAll("h2, h3").forEach((h, i) => {
+    if (h.closest(".toc-pagina")) return;
+    if (!h.id) h.id = "s" + i;
+    const num = h.classList.contains("nonum");
+    let etiqueta = h.textContent;
+    if (h.tagName === "H2") { if (!num) { a++; b = 0; etiqueta = a + ". " + etiqueta; } }
+    else { if (num) return; b++; etiqueta = a + "." + b + " " + etiqueta; }
+    if (h.tagName === "H3" && h.closest("section") === null && h.classList.contains("nonum")) return;
+    const li = document.createElement("li"); li.className = h.tagName === "H2" ? "n2" : "n3";
+    li.dataset.target = h.id; li.dataset.texto = h.textContent;
+    li.innerHTML = '<span class="t"></span><span class="dots"></span><span class="pg"></span>';
+    li.querySelector(".t").textContent = etiqueta;
+    toc.appendChild(li);
+  });
+  window.__tocTargets = [...toc.querySelectorAll("li")].map(li => li.dataset.texto);
+})();
+window.__setPages = function (pages) {
+  document.querySelectorAll("#toc li").forEach((li, i) => { li.querySelector(".pg").textContent = pages[i] || ""; });
+};
+</script>
+</body>
+</html>
