@@ -1,0 +1,23 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial","fontSize":"15px","primaryColor":"#EEF2F7","primaryBorderColor":"#1F3864","primaryTextColor":"#14243F","lineColor":"#56657F","clusterBkg":"#FFFFFF","clusterBorder":"#1F3864"}}}%%
+flowchart TB
+    subgraph M["Módulo Matrículas · estructura interna (igual en todos los módulos)"]
+        direction TB
+        C["<b>Capa de presentación</b><br/>ControladorMatriculas<br/>recibe HTTP, valida el DTO, traduce errores a 400/403/409"]
+        D["<b>Capa de dominio</b><br/>ServicioMatricula · entidades Matricula y CupoGrupo<br/>reglas RN-01 a RN-04, RN-11, RN-13"]
+        P(["IRepositorioMatriculas<br/>(contrato del dominio)"])
+        R["<b>Capa de repositorio</b><br/>RepositorioMatriculasSQL<br/>consultas, bloqueo FOR UPDATE, transacción"]
+        C --> D
+        D --> P
+        R -.->|implementa| P
+    end
+    X(["IConsultaAcademica<br/>(otro módulo)"])
+    A(["IRegistroAuditoria<br/>(otro módulo)"])
+    B[("esquema matriculas")]
+    D --> X
+    D --> A
+    R --> B
+
+    classDef iface fill:#F6EBD0,stroke:#A87A1E,color:#14243F
+    classDef layer fill:#EEF2F7,stroke:#1F3864,color:#14243F
+    class P,X,A iface
+    class C,D,R layer

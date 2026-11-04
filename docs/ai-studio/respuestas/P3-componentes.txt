@@ -1,0 +1,94 @@
+=== P3 · Vista general (texto) ===
+CLIENTE WEB (SPA / Navegador)
+                                                   │ HTTPS
+                                                   ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   API GATEWAY / CROSS-CUTTING PIPELINE                                │
+│                     [HTTPS Termination] [JWT Auth Filter] [Role Guard] [Exception Handler]            │
+└───────┬──────────────────────────────────────────┬─────────────────────────────────────────────┬───────┘
+        │                                          │                                             │
+        ▼                                          ▼                                             ▼
+┌──────────────────┐                     ┌────────────────────┐                        ┌─────────────────┐
+│     MÓDULO       │                     │       MÓDULO       │                        │     MÓDULO      │
+│ AUTENTICACIÓN Y  │                     │ GESTIÓN ACADÉMICA  │◄────────┐              │    MATRÍCULA    │
+│   AUTORIZACIÓN   │                     │   (Academic Core)  │         │              │                 │
+└────────┬─────────┘                     └─────────┬──────────┘         │              └────────┬────────┘
+         │                                         │                    │                       │
+         │ Emite Tokens                            │ Provee Catálogos   │ Valida Cupos/Grupos   │ Valida
+         │ Valida Claims                           ▼                    │                       ▼ Alumnos
+         │                              ┌────────────────────┐          │              ┌─────────────────┐
+         │                              │       MÓDULO       │──────────┘              │     MÓDULO      │
+         │                              │   CALIFICACIONES   │                         │    REPORTES     │
+         │                              └──────────┬─────────┘                         └────────┬────────┘
+         │                                         │                                            │
+         │                                         │ Publica Eventos                            │ Lee vistas
+         ▼                                         ▼                                            ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              IN-MEMORY EVENT BUS / APPLICATION MEDIATOR                               │
+└──────────────────────────────────────────────────┬─────────────────────────────────────────────────────┘
+                                                   │
+                                                   ▼
+                                        ┌────────────────────┐
+                                        │ MÓDULO AUDITORÍA   │
+                                        │  (WORM Log Engine) │
+                                        └──────────┬─────────┘
+                                                   │
+                                                   ▼
+                             [BASE DE DATOS RELACIONAL ÚNICA (PostgreSQL)]
+                   (Esquemas lógicos separados: auth, academic, enroll, grades, audit)
+=== P3 · Detalle de módulos ===
+Detalle de Módulos: Responsabilidades, Interfaces y Dependencias
+2.1. Módulo de Autenticación y Autorización (IAM)
+Responsabilidad: Gestión del ciclo de vida de credenciales (hashing Argon2id), emisión y verificación de JSON Web Tokens (JWT), resolución de roles (ADMINISTRADOR, COORDINADOR, DOCENTE, ESTUDIANTE) y permisos.
+Endpoints REST:
+POST /api/v1/auth/login (Retorna JWT firmado + refresh token).
+POST /api/v1/auth/logout (Invalida el token en lista negra / Redis).
+PUT /api/v1/auth/users/{id}/roles (Solo ADMINISTRADOR: asignación de perfiles).
+Interfaz Interna (In-Memory Service):
+ISecurityContext: Expone método GetCurrentUser(): UserContext con userId, roles, y tenant/metadata.
+Dependencias: Ninguna (módulo base).
+2.2. Módulo de Gestión Académica (Academic Core)
+Responsabilidad: Administración de entidades fundamentales: Estudiantes, Docentes, Programas, Asignaturas, Periodos, Aulas y Grupos con sus horarios y límites de cupo (RF-03, RF-04, RF-05, RF-06).
+Endpoints REST:
+POST|GET|PUT /api/v1/academic/programs y /courses (Gestión de oferta).
+POST|GET|PUT /api/v1/academic/terms (Configuración de periodos académicos).
+POST|GET|PUT /api/v1/academic/groups (Creación de grupos, asignación docente y definición de cupos).
+POST|PUT /api/v1/academic/students y /professors (Altas, bajas lógicas y modificaciones).
+Interfaz Interna (In-Memory Service):
+IAcademicQueryService: Permite a otros módulos verificar si un estudiante está Activo, si un docente está asignado a un grupo específico o consultar los prerrequisitos de una asignatura.
+Dependencias: ISecurityContext (para validar roles administrativos/coordinadores).
+2.3. Módulo de Matrícula (Enrollment Engine)
+Responsabilidad: Procesar la inscripción de asignaturas asegurando consistencia transaccional estricta (ACID). Valida cupos en tiempo real, verifica que no existan cruces de horario, impide duplicidad de asignaturas y actualiza la ocupación del grupo (RF-07, RNF-07).
+Endpoints REST:
+POST /api/v1/enrollments (Ejecuta la matrícula de uno o varios grupos).
+DELETE /api/v1/enrollments/{enrollmentId}/groups/{groupId} (Cancelación de grupo).
+GET /api/v1/enrollments/my-schedule (Horario del estudiante autenticado).
+Interfaz Interna:
+IEnrollmentQueryService: Expone GetEnrolledStudentsByGroup(groupId): List<StudentRef> (usado por el Módulo de Calificaciones).
+Dependencias:
+IAcademicQueryService (para validar estado del estudiante, validez del grupo y cupos máximos).
+IEventPublisher (publica StudentEnrolledEvent hacia Auditoría).
+2.4. Módulo de Calificaciones (Grades Management)
+Responsabilidad: Registro, edición y cálculo ponderado de notas parciales y finales. Bloquea modificaciones si el docente no es titular o si la ventana temporal del periodo cerró (RF-08, RF-09).
+Endpoints REST:
+GET /api/v1/grades/groups/{groupId} (Lista de notas; acceso para el docente titular o coordinador).
+PUT /api/v1/grades/groups/{groupId}/evaluations (Carga/actualización de notas por corte).
+GET /api/v1/grades/my-grades (Solo lectura para el estudiante sobre sus notas publicadas).
+Dependencias:
+IAcademicQueryService (valida asignación del docente al grupo y estado del periodo).
+IEnrollmentQueryService (obtiene la lista oficial de matriculados del grupo).
+IEventPublisher (publica GradeModifiedEvent con nota previa, nota nueva, autor y justificación hacia Auditoría).
+2.5. Módulo de Reportes y Búsqueda (Reporting & Search)
+Responsabilidad: Generación optimizada de consultas consolidadas, listas de clase, sábanas de notas y reportes institucionales en PDF/Excel sin degradar el procesamiento transaccional (RF-10, RF-11).
+Endpoints REST:
+GET /api/v1/reports/enrollments?termId=X&programId=Y
+GET /api/v1/reports/grades-summary?termId=X&groupId=Y
+GET /api/v1/search?q={term}&entity={student|teacher|group}
+Dependencias: Consalta directamente las vistas de lectura en la base de datos relacional (patrón CQRS a nivel de base de datos usando vistas SQL optimizadas/réplicas de lectura).
+2.6. Módulo de Auditoría (Audit Engine)
+Responsabilidad: Registro inmutable (Append-Only) de eventos sensibles: inicios de sesión, cambios de roles, matrículas efectuadas y alteraciones de calificaciones (RF-12, RNF-10).
+Endpoints REST:
+GET /api/v1/audit/logs?entity=X&userId=Y&fromDate=Z (Restringido exclusivamente al ADMINISTRADOR).
+Mecanismo de Ingesta:
+Suscriptor desacoplado del In-Memory Event Bus. Escucha eventos asíncronos (GradeModifiedEvent, UserLoggedInEvent, RoleChangedEvent, EnrollmentCompletedEvent) y persiste de forma asíncrona pero confiable en la tabla audit.logs.
+Dependencias: Ninguna (módulo sumidero de eventos).

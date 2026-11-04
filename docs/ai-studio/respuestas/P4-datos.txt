@@ -1,0 +1,65 @@
+ Modelo de Datos Conceptual y Lógico para el SGA.
+Para satisfacer las reglas de negocio, normalización y consistencia (RNF-07), el modelo adopta el patrón canónico de Cabecera-Detalle para la matrícula (Matricula 
+→
+→
+ DetalleMatricula), e incorpora las entidades complementarias Horario y Auditoria.
+1. Entidades Principales y Atributos
+Usuario: Credenciales y estado global de acceso.
+id_usuario (PK), email (UK), password_hash, nombre, apellido, estado (Activo/Inactivo), fecha_creacion.
+Rol: Catálogo de permisos.
+id_rol (PK), codigo_rol (UK: ADMIN, COORDINADOR, DOCENTE, ESTUDIANTE), descripcion.
+UsuarioRol: Tabla asociativa para soportar asignación múltiple de roles (M:N).
+id_usuario (PK, FK), id_rol (PK, FK).
+Estudiante: Extensión de perfil académico del usuario.
+id_estudiante (PK), id_usuario (FK, UK, 1:1), codigo_estudiante (UK), id_programa (FK), estado_academico (Regular, Egresado, Suspendido).
+Docente: Extensión del perfil docente del usuario.
+id_docente (PK), id_usuario (FK, UK, 1:1), codigo_docente (UK), especialidad, tipo_contrato.
+Programa: Oferta académica institucional.
+id_programa (PK), codigo_programa (UK), nombre, nivel_academico (Pregrado, Posgrado), creditos_totales.
+Asignatura: Unidades curriculares asociadas a un plan de estudios.
+id_asignatura (PK), codigo_asignatura (UK), id_programa (FK), nombre, creditos, semestre_nivel.
+PeriodoAcademico: Ciclos lectivos regulares o vacacionales.
+id_periodo (PK), codigo_periodo (UK: ej. "2025-1"), fecha_inicio, fecha_fin, estado (Planificacion, Abierto, Cerrado).
+Grupo: Instancia concreta de una asignatura dictada en un periodo.
+id_grupo (PK), id_asignatura (FK), id_periodo (FK), id_docente (FK), codigo_grupo (ej. "G01"), cupo_maximo, cupo_ocupado.
+Horario: Franjas de clase asignadas a un grupo.
+id_horario (PK), id_grupo (FK), dia_semana (1-7), hora_inicio, hora_fin, aula_o_enlace.
+Matricula (Cabecera): Formalización de la inscripción del estudiante en un periodo académico.
+id_matricula (PK), id_estudiante (FK), id_periodo (FK), fecha_registro, estado (Inscrita, Retirada).
+DetalleMatricula (Línea de Matrícula): Asignación específica a un grupo del periodo.
+id_detalle (PK), id_matricula (FK), id_grupo (FK), id_asignatura (FK denormalizada para integridad), estado (Matriculado, Retirado).
+Calificacion: Evaluaciones y notas por corte.
+id_calificacion (PK), id_detalle (FK), nombre_corte (ej. "Parcial 1"), porcentaje (ej. 30%), nota_obtenida, fecha_registro, id_docente_calificador (FK).
+Auditoria: Pistas inmutables de operaciones sensibles (WORM).
+id_auditoria (PK, BigInt), id_usuario (FK), accion (LOGIN, REGISTRO_NOTA, CAMBIO_ROL, MATRICULA), entidad_afectada, id_registro_afectado, valores_anteriores (JSONB), valores_nuevos (JSONB), fecha_hora, ip_origen.
+2. Cardinalidades de las Relaciones
+Usuario – Rol: M:N (Un usuario puede tener uno o más roles; un rol aplica a múltiples usuarios) vía UsuarioRol.
+Usuario – Estudiante / Docente: 1:0..1 (Herencia por composición: un usuario puede o no ser estudiante o docente).
+Programa – Estudiante: 1:N (Un programa tiene muchos estudiantes; un estudiante pertenece a un programa principal).
+Programa – Asignatura: 1:N (Un programa estructura muchas asignaturas).
+Asignatura – Grupo: 1:N (Una asignatura se oferta en uno o varios grupos por periodo).
+PeriodoAcademico – Grupo: 1:N (Un periodo agrupa múltiples cursos abiertos).
+Docente – Grupo: 1:N (Un docente dicta cero o varios grupos; un grupo tiene un docente responsable).
+Grupo – Horario: 1:N (Un grupo tiene varias sesiones semanales de clase).
+Estudiante – Matricula: 1:N (Un estudiante se matricula a lo largo de varios periodos).
+PeriodoAcademico – Matricula: 1:N (Un periodo contiene muchas matrículas).
+Matricula – DetalleMatricula: 1:N (Una matrícula inscribe varias asignaturas/grupos).
+Grupo – DetalleMatricula: 1:N (Un grupo tiene muchos estudiantes inscritos).
+DetalleMatricula – Calificacion: 1:N (Una asignatura matriculada acumula varios cortes de nota).
+Usuario – Auditoria: 1:N (Un usuario genera múltiples eventos de trazabilidad).
+3. Restricciones Técnicas para Evitar Matrículas Duplicadas y Sobrecupo
+Para asegurar el RNF-07 (Integridad y consistencia), el sistema no se confía únicamente de la validación en código Back-End; impone restricciones formales a nivel de Base de Datos:
+Unicidad de Matrícula por Periodo (Nivel Cabecera):
+Restricción: UNIQUE (id_estudiante, id_periodo) en la tabla Matricula.
+Efecto: Impide que un estudiante abra más de un proceso de matrícula para el mismo periodo académico.
+Prevención de Asignatura Duplicada en Diferentes Grupos (Nivel Detalle):
+Restricción: UNIQUE (id_matricula, id_asignatura) en la tabla DetalleMatricula.
+Efecto: Aunque un estudiante intente registrar el Grupo 1 y el Grupo 2 de la misma asignatura (ej. "Cálculo I"), la base de datos abortará la transacción por colisión de clave única.
+Prevención de Inscripción Duplicada en el Mismo Grupo:
+Restricción: UNIQUE (id_matricula, id_grupo) en DetalleMatricula.
+Efecto: Evita inserciones redundantes concurrentes en el mismo grupo.
+Control Estricto de Cupo Máximo (Anti-Sobrecupo / Overbooking):
+Restricción de verificación en Grupo: CHECK (cupo_ocupado <= cupo_maximo).
+Mecanismo Transaccional: En el momento de la inscripción, el Back-End ejecuta un bloqueo de fila (SELECT cupo_ocupado, cupo_maximo FROM Grupo WHERE id_grupo = :id FOR UPDATE), valida disponibilidad, incrementa cupo_ocupado = cupo_ocupado + 1 e inserta el DetalleMatricula bajo la misma transacción ACID atómica.
+Prevención de Cruce de Horarios (Solapamiento Temporal):
+Validación a nivel de servicio y soportada opcionalmente mediante restricciones de exclusión temporal en PostgreSQL (EXCLUDE USING GIST sobre rangos de tiempo y días), validando que no coincidan dos grupos con (dia_semana, hora_inicio, hora_fin) para el mismo estudiante.

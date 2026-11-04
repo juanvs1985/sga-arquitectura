@@ -1,0 +1,161 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial","fontSize":"14px","primaryColor":"#EEF2F7","primaryBorderColor":"#1F3864","primaryTextColor":"#14243F","lineColor":"#56657F","actorBkg":"#1F3864","actorTextColor":"#FFFFFF","actorBorder":"#1F3864","noteBkgColor":"#F6EBD0","noteBorderColor":"#A87A1E","signalColor":"#14243F","signalTextColor":"#14243F","labelBoxBkgColor":"#F6EBD0","labelBoxBorderColor":"#A87A1E","altSectionBkgColor":"#F7F9FC"}}}%%
+erDiagram
+    USUARIO ||--o{ USUARIO_ROL : "tiene"
+    ROL ||--o{ USUARIO_ROL : "se asigna en"
+    USUARIO ||--o{ SESION : "abre"
+    USUARIO ||--o| ESTUDIANTE : "es"
+    USUARIO ||--o| DOCENTE : "es"
+    USUARIO ||--o{ EVENTO_AUDITORIA : "genera"
+    PROGRAMA ||--o{ PLAN_ESTUDIO : "define"
+    PLAN_ESTUDIO ||--|{ ASIGNATURA : "incluye"
+    PROGRAMA ||--o{ ESTUDIANTE : "inscribe"
+    ASIGNATURA ||--o{ GRUPO : "se oferta en"
+    PERIODO_ACADEMICO ||--o{ GRUPO : "abre"
+    DOCENTE |o--o{ GRUPO : "dicta"
+    GRUPO ||--|{ HORARIO : "tiene"
+    AULA |o--o{ HORARIO : "se usa en"
+    GRUPO ||--|| CUPO_GRUPO : "controla"
+    GRUPO ||--|{ EVALUACION : "define"
+    ESTUDIANTE ||--o{ MATRICULA : "realiza"
+    PERIODO_ACADEMICO ||--o{ MATRICULA : "contiene"
+    MATRICULA ||--|{ DETALLE_MATRICULA : "incluye"
+    GRUPO ||--o{ DETALLE_MATRICULA : "recibe"
+    DETALLE_MATRICULA ||--o{ CALIFICACION : "obtiene"
+    EVALUACION ||--o{ CALIFICACION : "se califica en"
+
+    USUARIO {
+        int id_usuario PK
+        string correo UK
+        string hash_contrasena "Argon2id"
+        string nombres
+        string apellidos
+        string estado "Activo o Inactivo"
+    }
+    ROL {
+        int id_rol PK
+        string codigo UK "ADMIN, COORDINADOR, DOCENTE, ESTUDIANTE"
+        string descripcion
+    }
+    USUARIO_ROL {
+        int id_usuario PK,FK
+        int id_rol PK,FK
+    }
+    SESION {
+        int id_sesion PK
+        int id_usuario FK
+        string hash_token_renovacion
+        datetime expira_en
+        bool revocada
+    }
+    ESTUDIANTE {
+        int id_estudiante PK
+        int id_usuario FK,UK
+        string codigo UK
+        int id_programa FK
+        string estado
+    }
+    DOCENTE {
+        int id_docente PK
+        int id_usuario FK,UK
+        string codigo UK
+        string estado
+    }
+    PROGRAMA {
+        int id_programa PK
+        string codigo UK
+        string nombre
+        string nivel
+    }
+    PLAN_ESTUDIO {
+        int id_plan PK
+        int id_programa FK
+        string version
+        bool vigente
+    }
+    ASIGNATURA {
+        int id_asignatura PK
+        int id_plan FK
+        string codigo UK
+        string nombre
+        int creditos
+        int semestre
+    }
+    PERIODO_ACADEMICO {
+        int id_periodo PK
+        string codigo UK "2026-2"
+        date fecha_inicio
+        date fecha_fin
+        date inicio_matricula
+        date fin_matricula
+        date limite_notas
+        bool notas_cerradas
+    }
+    GRUPO {
+        int id_grupo PK
+        int id_asignatura FK
+        int id_periodo FK
+        int id_docente FK
+        string codigo "G01"
+        int cupo_maximo
+    }
+    HORARIO {
+        int id_horario PK
+        int id_grupo FK
+        int id_aula FK "nulo si es virtual"
+        int dia_semana
+        time hora_inicio
+        time hora_fin
+        string enlace "si es virtual"
+    }
+    AULA {
+        int id_aula PK
+        string codigo UK
+        string sede
+        int capacidad "cupo del grupo <= capacidad"
+    }
+    CUPO_GRUPO {
+        int id_grupo PK,FK
+        int cupo_maximo
+        int ocupados "CHECK ocupados <= cupo_maximo"
+    }
+    MATRICULA {
+        int id_matricula PK
+        int id_estudiante FK "UK con id_periodo"
+        int id_periodo FK
+        datetime fecha
+        string estado
+    }
+    DETALLE_MATRICULA {
+        int id_detalle PK
+        int id_matricula FK "UK con id_asignatura y con id_grupo"
+        int id_grupo FK
+        int id_asignatura FK "FK compuesta con id_grupo"
+        string estado "Matriculado o Retirado"
+    }
+    EVALUACION {
+        int id_evaluacion PK
+        int id_grupo FK
+        string nombre "Parcial 1"
+        decimal porcentaje "suma 100 por grupo"
+    }
+    CALIFICACION {
+        int id_calificacion PK
+        int id_detalle FK "UK con id_evaluacion"
+        int id_evaluacion FK
+        decimal nota "0,0 a 5,0"
+        string estado "Borrador o Publicada"
+        datetime fecha_registro
+    }
+    EVENTO_AUDITORIA {
+        bigint id_evento PK
+        int id_usuario FK
+        string accion
+        string entidad
+        string id_registro
+        json valor_anterior
+        json valor_nuevo
+        string justificacion
+        datetime fecha_hora
+        string ip_origen
+        string id_correlacion
+    }

@@ -1,0 +1,39 @@
+%%{init: {"theme":"base","flowchart":{"nodeSpacing":40,"rankSpacing":60},"themeVariables":{"fontFamily":"Arial","fontSize":"15px","primaryColor":"#EEF2F7","primaryBorderColor":"#1F3864","primaryTextColor":"#14243F","lineColor":"#56657F","clusterBkg":"#FFFFFF","clusterBorder":"#1F3864"}}}%%
+flowchart TB
+    NAV["Navegador web · interfaz SPA"]
+    PIPE["<b>Pipeline de seguridad</b> (middleware)<br/>valida JWT · verifica rol · límite de peticiones · manejo de errores"]
+
+    subgraph SGA["SGA · Monolito modular · un solo proceso desplegable"]
+        direction TB
+        IDN["<b>Identidad y acceso</b><br/>/api/v1/auth<br/><i>provee IContextoSeguridad</i>"]
+        ACA["<b>Gestión académica</b><br/>/api/v1/academico<br/><i>provee IConsultaAcademica</i>"]
+        MAT["<b>Matrículas</b><br/>/api/v1/matriculas<br/><i>provee IConsultaMatriculas</i>"]
+        CAL["<b>Calificaciones</b><br/>/api/v1/calificaciones"]
+        REP["<b>Reportes</b><br/>/api/v1/reportes"]
+        AUD["<b>Auditoría</b><br/>/api/v1/auditoria<br/><i>provee IRegistroAuditoria</i>"]
+    end
+
+    DB[("<b>PostgreSQL</b> · una base de datos<br/>esquemas: identidad · academico · matriculas<br/>calificaciones · auditoria · vistas de reportes")]
+
+    NAV -->|"HTTPS · JSON REST"| PIPE
+    PIPE -->|"IContextoSeguridad"| IDN
+    PIPE -->|"enruta /api/v1/*"| SGA
+
+    MAT -->|"IConsultaAcademica"| ACA
+    CAL -->|"IConsultaAcademica"| ACA
+    CAL -->|"IConsultaMatriculas"| MAT
+
+    IDN -->|"IRegistroAuditoria"| AUD
+    ACA -->|"IRegistroAuditoria"| AUD
+    MAT -->|"IRegistroAuditoria"| AUD
+    CAL -->|"IRegistroAuditoria"| AUD
+
+    SGA -->|"cada módulo usa solo su esquema"| DB
+    REP -.->|"solo lectura de vistas"| DB
+
+    classDef mod fill:#1F3864,stroke:#1F3864,color:#FFFFFF
+    classDef edge fill:#F6EBD0,stroke:#A87A1E,color:#14243F
+    classDef db fill:#E8EEF6,stroke:#56657F,color:#14243F
+    class IDN,ACA,MAT,CAL,REP,AUD mod
+    class PIPE,NAV edge
+    class DB db

@@ -1,0 +1,80 @@
+flowchart TD
+    %% Diagrama Mermaid generado por Gemini 3.8 Flash (P3), copiado sin cambios como evidencia.
+    Client["Navegador Web / SPA Client"]
+
+    subgraph Gateway["Cross-Cutting & API Layer"]
+        Pipeline["API Gateway / Security Middleware\n(JWT Auth, RBAC Filter, Rate Limiter)"]
+    end
+
+    Client -->|HTTPS / JSON REST| Pipeline
+
+    subgraph Monolith["SGA - Monolito Modular (In-Process)"]
+        subgraph AuthMod["Módulo Autenticación & Autorización"]
+            AuthCtrl["AuthController"]
+            AuthSvc["AuthService"]
+            SecContext["SecurityContext"]
+        end
+        subgraph AcademicMod["Módulo Gestión Académica"]
+            AcadCtrl["AcademicController"]
+            AcadSvc["AcademicService"]
+            AcadContract["IAcademicQueryService\n(Interface)"]
+        end
+        subgraph EnrollMod["Módulo Matrícula"]
+            EnrollCtrl["EnrollmentController"]
+            EnrollSvc["EnrollmentService\n(Control de Concurrencia ACID)"]
+            EnrollContract["IEnrollmentQueryService\n(Interface)"]
+        end
+        subgraph GradeMod["Módulo Calificaciones"]
+            GradeCtrl["GradesController"]
+            GradeSvc["GradesService"]
+        end
+        subgraph ReportMod["Módulo Reportes & Búsqueda"]
+            ReportCtrl["ReportsController"]
+            ReportSvc["ReportsQueryService\n(Vistas de Lectura CQRS)"]
+        end
+        subgraph AuditMod["Módulo Auditoría"]
+            AuditCtrl["AuditController"]
+            AuditSvc["AuditEventListener\n(Append-Only)"]
+        end
+        EventBus[["In-Memory Event Bus\n(MediatR / Spring ApplicationEvent)"]]
+    end
+
+    Pipeline -->|/api/v1/auth/*| AuthCtrl
+    Pipeline -->|/api/v1/academic/*| AcadCtrl
+    Pipeline -->|/api/v1/enrollments/*| EnrollCtrl
+    Pipeline -->|/api/v1/grades/*| GradeCtrl
+    Pipeline -->|/api/v1/reports/*| ReportCtrl
+    Pipeline -->|/api/v1/audit/*| AuditCtrl
+
+    AuthCtrl --> AuthSvc
+    AcadCtrl --> AcadSvc
+    AcadSvc -.->|Implementa| AcadContract
+    EnrollCtrl --> EnrollSvc
+    EnrollSvc -.->|Implementa| EnrollContract
+    GradeCtrl --> GradeSvc
+    ReportCtrl --> ReportSvc
+    AuditCtrl --> AuditSvc
+
+    EnrollSvc -->|1. Valida Alumno y Cupos| AcadContract
+    GradeSvc -->|1. Valida Docente y Periodo| AcadContract
+    GradeSvc -->|2. Valida Estudiantes del Grupo| EnrollContract
+
+    AuthSvc -->|Dispara AuthEvent| EventBus
+    EnrollSvc -->|Dispara EnrollmentEvent| EventBus
+    GradeSvc -->|Dispara GradeModifiedEvent| EventBus
+    EventBus -->|Consume Eventos de Negocio| AuditSvc
+
+    subgraph Database["Base de Datos Relacional Única (PostgreSQL)"]
+        SchemaAuth[("Esquema 'auth'\n(Users, Roles)")]
+        SchemaAcad[("Esquema 'academic'\n(Programs, Courses, Groups)")]
+        SchemaEnroll[("Esquema 'enrollment'\n(Enrollments, Quotas)")]
+        SchemaGrades[("Esquema 'grades'\n(Evaluations, Grades)")]
+        SchemaAudit[("Esquema 'audit'\n(WORM Event Log)")]
+    end
+
+    AuthSvc --> SchemaAuth
+    AcadSvc --> SchemaAcad
+    EnrollSvc --> SchemaEnroll
+    GradeSvc --> SchemaGrades
+    ReportSvc -.->|Lectura cross-schema optimizada| Database
+    AuditSvc --> SchemaAudit

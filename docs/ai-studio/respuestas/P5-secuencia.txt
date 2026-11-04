@@ -1,0 +1,27 @@
+A continuación, se detalla el diseño de interacción y concurrencia para el proceso de matrícula de una asignatura/grupo.
+Para resolver de forma estricta el RNF-07 (Integridad y consistencia) y evitar sobrecupos (overbooking), la arquitectura implementa un mecanismo de bloqueo pesimista a nivel de fila (SELECT ... FOR UPDATE) dentro de una transacción ACID en PostgreSQL.
+
+1. Descripción del Flujo y Resolución de Concurrencia
+1. Autenticación y Autorización: La API intercepta las solicitudes, valida la firma del token JWT y comprueba que los usuarios posean el rol ESTUDIANTE (o COORDINADOR) habilitado.
+2. Inicio de Transacción Atómica: Se abre una transacción en la base de datos para cada solicitud.
+3. Escenario de Concurrencia Crítica (Último Cupo):
+   * Las solicitudes de Estudiante 1 y Estudiante 2 llegan prácticamente al mismo milisegundo por el cupo 30 de 30 (cupo_ocupado = 29, cupo_maximo = 30).
+   * La Transacción 1 (Tx1) adquiere primero el cerrojo exclusivo sobre el registro del grupo mediante SELECT ... FOR UPDATE.
+   * La Transacción 2 (Tx2) entra en estado de espera bloqueada (WAIT) en el motor de base de datos hasta que Tx1 libere el cerrojo.
+4. Validaciones en Tx1:
+   * Duplicidad: Verifica que el Estudiante 1 no tenga ya matriculada esa asignatura en el periodo actual ni cruce de horario.
+   * Cupo: Evalúa cupo_ocupado (29) < cupo_maximo (30). Es válido.
+   * Persistencia: Incrementa cupo_ocupado a 30, inserta el registro en DetalleMatricula y ejecuta COMMIT.
+   * Auditoría Asíncrona: Emite el evento MatriculaExitosaEvent hacia el bus de eventos en memoria sin frenar la respuesta al usuario.
+5. Resolución de Tx2 (Solicitud Rechazada):
+   * Tras el COMMIT de Tx1, se libera el cerrojo y Tx2 despierta, leyendo inmediatamente el estado actualizado: cupo_ocupado = 30.
+   * Tx2 evalúa la condición de cupo: 30 < 30 resulta falso.
+   * Tx2 ejecuta ROLLBACK inmediato y el servicio arroja la excepción de dominio CupoAgotadoException.
+   * La API responde al Estudiante 2 un código HTTP 409 Conflict, garantizando cero sobrecupo.
+
+2. Consideraciones de Resiliencia y Rendimiento en el Flujo
+1. Tiempo de Retención de Bloqueos (Lock Contention): La transacción solo mantiene el bloqueo de fila durante las micro-operaciones de lectura y escritura (un tiempo típico de ≤15 ms). Esto garantiza que, incluso con múltiples estudiantes compitiendo simultáneamente, la cola de espera de la base de datos se desahogue rápidamente sin provocar agotamiento de conexiones en el pool de la aplicación.
+2. Prevención de Deadlocks (Bloqueos Mutuos): Cuando un estudiante inscribe varias asignaturas en un mismo envío (batch enrollment), el backend ordena previamente los id_grupo de forma ascendente antes de solicitar los bloqueos FOR UPDATE. Esto previene de forma determinista cualquier situación de abrazo mortal entre transacciones concurrentes.
+3. Desacoplamiento de la Auditoría: La escritura en la tabla Auditoria ocurre de manera asíncrona mediante el EventBus. Así, la persistencia del log de auditoría no retrasa la confirmación de la matrícula al estudiante ni retiene recursos de la transacción crítica de cupos.
+
+[El diagrama de secuencia generado se guarda como imagen en P5-diagrama-ia.png]

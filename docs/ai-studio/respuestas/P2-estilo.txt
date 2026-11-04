@@ -1,0 +1,52 @@
+
+Como arquitecto de software senior, evalúo a continuación los tres estilos arquitectónicos más viables para el Sistema de Gestión Académica (SGA): Arquitectura en Capas Tradicional, Monolito Modular y Microservicios.
+1. Evaluación de los Estilos Arquitectónicos
+A. Arquitectura en Capas Tradicional (N-Tier: Presentación 
+→
+→
+ Lógica de Negocio 
+→
+→
+ Acceso a Datos)
+Complejidad: Muy baja en desarrollo y operación. Curva de aprendizaje mínima para el equipo.
+Rendimiento (300 concurrentes): Cumple con el objetivo sin problemas si la base de datos relacional está adecuadamente indexada.
+Disponibilidad (99,5 %): Alcanzable mediante un balanceador de carga que distribuya tráfico entre 2 o más instancias de la aplicación.
+Escalabilidad: Escalamiento horizontal del bloque completo. Ineficiente si solo el módulo de matrícula sufre congestión.
+Mantenibilidad: Riesgo crítico. Con el paso del tiempo, las capas monolíticas tradicionales tienden al fenómeno de “Gran Bola de Lodo” (Big Ball of Mud). La lógica de matrícula, notas y auditoría suele acoplarse fuertemente en las mismas entidades y servicios compartidos.
+Consistencia en Matrícula: Alta. Permite transacciones ACID locales directas en una única base de datos.
+B. Monolito Modular (Modular Monolith)
+Complejidad: Media en desarrollo (exige disciplina de diseño para delimitar contextos y módulos independientes con APIs internas estrictas) y baja en operación (se empaqueta y despliega como un único artefacto o contenedor).
+Rendimiento (300 concurrentes): Óptimo. La comunicación intermodular ocurre en memoria (in-process method calls), eliminando la latencia de red y la sobrecarga de serialización HTTP/JSON. Supera con holgura la meta de < 3 s.
+Disponibilidad (99,5 %): Muy alta. Dos réplicas activas detrás de un balanceador (ej. Nginx o AWS ALB) toleran caídas de nodo sin interrumpir el servicio.
+Escalabilidad: Escalamiento horizontal eficiente del artefacto. Si a futuro un módulo específico (ej. Matrícula) requiere independizarse, sus límites limpios facilitan su extracción sin reescribir el sistema.
+Mantenibilidad: Excelente. Separa responsabilidades por dominio de negocio (Módulo Estudiantes, Módulo Calificaciones, Módulo Matrícula, Módulo Auditoría), garantizando alta cohesión y bajo acoplamiento sin la sobrecarga operativa de los microservicios.
+Consistencia en Matrícula: Excelente. Gestiona la contención de cupos y concurrencia mediante transacciones ACID nativas y aislamiento a nivel de base de datos relacional (bloqueo pesimista o selectivo por fila).
+C. Microservicios (Servicios distribuidos independientes con BD por servicio)
+Complejidad: Extremadamente alta. Requiere infraestructura avanzada (orquestador tipo Kubernetes, service mesh, distributed tracing, pasarela de API) y gestión compleja de despliegues independientes. Sobrediseño (over-engineering) para el tamaño de la institución.
+Rendimiento (300 concurrentes): Puede verse penalizado por saltos de red (network hops) y latencia de serialización en consultas compuestas (ej. generar el consolidado de matrícula y notas de un estudiante).
+Disponibilidad (99,5 %): Teóricamente alta por aislamiento de fallas, pero en la práctica vulnerable a fallas en cascada y dependencia de la red si no se implementan patrones complejos de resiliencia (circuit breaker, reintentos).
+Escalabilidad: Máxima a nivel granular, permitiendo asignar recursos únicamente al servicio de matrículas.
+Mantenibilidad: Alta a nivel de código de cada servicio, pero muy difícil de trazar y mantener en cambios que cruzan contratos de múltiples servicios.
+Consistencia en Matrícula: Crítica y de alto riesgo. Al requerir bases de datos separadas, la validación de cupos y cruces de horario obligaría a implementar consistencia eventual y patrones Saga. Esto incrementa dramáticamente el riesgo de race conditions y sobrecupo (overbooking) en periodos pico de matrícula.
+2. Tabla Comparativa
+Criterio de Evaluación	Arquitectura en Capas	Monolito Modular	Microservicios
+Complejidad de Desarrollo	Baja (un solo proyecto, patrones simples).	Media (diseño DDD, contratos internos).	Muy Alta (manejo de sistemas distribuidos).
+Complejidad Operativa (DevOps)	Baja (un único artefacto a desplegar).	Baja (un único artefacto o contenedor).	Extremadamente Alta (K8s, redes, observabilidad distribuida).
+Rendimiento (300 conc. / 
+≤
+≤
+ 3 s)	Bueno (suficiente para la carga).	Excelente (llamadas en memoria, sin latencia de red).	Moderado/Variable (latencia de red inter-servicio).
+Disponibilidad (99,5 %)	Media-Alta (2 nodos + Load Balancer).	Alta (2-3 réplicas + Load Balancer, rápido arranque).	Alta (aislamiento de fallos, pero depende de la red).
+Escalabilidad (RNF-04)	Media (escala todo el bloque).	Buena (escala todo el bloque; desacoplado internamente).	Excelente (escala servicios específicos bajo demanda).
+Mantenibilidad (RNF-05)	Baja (riesgo de acoplamiento espagueti).	Alta (módulos cohesivos y aislados por dominio).	Media-Alta (servicios pequeños, pero contratos complejos).
+Consistencia en Matrícula (RNF-07)	Alta (transacciones ACID directas).	Óptima (ACID relacional, sin complejidad distribuida).	Deficiente/Compleja (requiere Sagas y consistencia eventual).
+3. Recomendación Arquitectónica y Justificación
+Estilo Recomendado: Monolito Modular (Modular Monolith)
+Se recomienda adoptar una arquitectura de Monolito Modular con persistencia relacional única y partición lógica de esquemas, complementada con una interfaz web desacoplada (SPA o SSR) consumiendo una API REST.
+Justificación frente a los Requerimientos No Funcionales:
+Integridad y Consistencia (RNF-07): El proceso de matrícula con validación de cupos concurrentes y prevención de duplicados es el mayor riesgo del SGA. El monolito modular permite ejecutar transacciones atómicas (ACID) en la base de datos relacional (ej. PostgreSQL con SELECT ... FOR UPDATE o control de concurrencia optimista), garantizando que jamás se exceda un cupo ni se matricule una asignatura duplicada, eliminando la fragilidad de la consistencia eventual de los microservicios.
+Rendimiento y Concurrencia (RNF-02): Un pico de 300 usuarios concurrentes es una carga ligera para la capacidad de cómputo moderna. Al mantener los módulos (Estudiantes, Asignaturas, Matrícula, Calificaciones) dentro del mismo proceso de ejecución, las llamadas entre módulos son instantáneas en memoria, garantizando holgadamente respuestas en menos de 3 segundos para el 95 % de las peticiones.
+Mantenibilidad y Modularidad (RNF-05): A diferencia de la arquitectura en capas genérica, el monolito modular define barreras estrictas de dominio (Contextos Delimitados de DDD). El código de calificaciones no puede tocar directamente las tablas o entidades de matrícula, sino solo a través de interfaces públicas bien definidas, facilitando refactorizaciones, pruebas unitarias y reduciendo la deuda técnica.
+Escalabilidad y Crecimiento Futuro (RNF-04): Permite atender el crecimiento institucional añadiendo réplicas idénticas detrás de un balanceador de carga. Además, si dentro de varios años el módulo de matrícula o el de autenticación requiere escalar independientemente, el aislamiento de sus interfaces permite extraerlo hacia un microservicio autónomo con un costo de refactorización mínimo.
+Disponibilidad y Recuperabilidad (RNF-03, RNF-09): Desplegar 2 o 3 réplicas del monolito en contenedores (ej. Docker) detrás de un proxy/balanceador garantiza el 99,5 % de disponibilidad. La gestión de copias de seguridad y procedimientos de restauración (RTO/RPO) sobre una única base de datos relacional es directa y confiable, sin lidiar con restauraciones desincronizadas entre múltiples almacenes de datos.
+Seguridad y Auditoría Centralizada (RNF-01, RNF-10, RNF-11): La aplicación de políticas de roles y permisos (RBAC) y el registro transaccional de auditoría (RF-12) se implementan mediante interceptores (middleware) centralizados y atómicos en el ciclo de vida de la petición, garantizando que ninguna mutación de notas quede sin registro auditable.

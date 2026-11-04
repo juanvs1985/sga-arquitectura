@@ -1,0 +1,18 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial","fontSize":"14px","primaryColor":"#EEF2F7","primaryBorderColor":"#1F3864","primaryTextColor":"#14243F","lineColor":"#56657F","actorBkg":"#EEF2F7","actorTextColor":"#14243F","labelTextColor":"#14243F","loopTextColor":"#14243F","actorBorder":"#1F3864","noteBkgColor":"#F6EBD0","noteBorderColor":"#A87A1E","signalColor":"#14243F","signalTextColor":"#14243F","labelBoxBkgColor":"#F6EBD0","labelBoxBorderColor":"#A87A1E","altSectionBkgColor":"#F7F9FC"}}}%%
+sequenceDiagram
+    participant S1 as Solicitud 1 (estudiante E1)
+    participant BD as PostgreSQL<br/>cupo G01: 29 de 30
+    participant S2 as Solicitud 2 (estudiante E2)
+
+    par Llegan al mismo tiempo
+        S1->>BD: BEGIN · SELECT … FOR UPDATE (G01)
+    and
+        S2->>BD: BEGIN · SELECT … FOR UPDATE (G01)
+    end
+    BD-->>S1: Bloqueo concedido · 29 de 30
+    Note over BD,S2: S2 espera a que S1 libere el bloqueo
+    S1->>BD: INSERT detalle · ocupados = 30 · INSERT auditoría
+    S1->>BD: COMMIT (libera el bloqueo)
+    BD-->>S2: Bloqueo concedido · 30 de 30
+    S2->>BD: ROLLBACK (sin cupo) → 409 Conflict
+    Note over S1,S2: Resultado: 1 matrícula y 1 rechazo. El grupo nunca queda en 31 de 30.

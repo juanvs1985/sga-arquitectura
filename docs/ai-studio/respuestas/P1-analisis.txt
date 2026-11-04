@@ -1,0 +1,58 @@
+
+Como arquitecto de software senior, a continuación presento el análisis previo de requisitos del Sistema de Gestión Académica (SGA), estructurado formalmente para servir de base al diseño de la arquitectura.
+1. Identificación de Actores
+Actores Principales (Inician casos de uso para cumplir un objetivo de negocio)
+Estudiante: Consulta oferta académica, realiza matrícula de asignaturas, revisa horarios asignados y consulta el historial/calificaciones publicadas.
+Docente: Consulta grupos y listas de clase asignadas, registra, modifica y consolida calificaciones parciales/finales de sus estudiantes.
+Coordinador Académico: Configura planes de estudio, programas, asignaturas, periodos académicos, grupos, cupos, asigna docentes y aulas, supervisa matrículas y genera reportes de gestión.
+Administrador del Sistema: Gestiona el ciclo de vida de usuarios (altas, bajas, reseteos), asigna roles y permisos globales, consulta pistas de auditoría y monitorea la salud técnica de la plataforma.
+Actores Secundarios (Sistemas o procesos automáticos de soporte)
+Servicio de Auditoría / Logger: Captura de forma asíncrona o transaccional los eventos críticos del sistema (autenticación, matrículas, cambios de notas).
+Servicio de Copias de Seguridad (Backup Engine): Ejecuta y valida las rutinas de respaldo programado de la base de datos y archivos.
+Servicio de Notificaciones (Email/SMS): Envía confirmaciones de matrícula, alertas de cambio de notas o enlaces de recuperación de credenciales.
+2. Supuestos Razonables de Arquitectura y Negocio
+Dado que el alcance inicial no detalla toda la casuística operativa, se asumen las siguientes premisas de ingeniería:
+Ventanas de Tiempo Operativas: Las matrículas y el registro de calificaciones están acotados por fechas límite definidas por periodo. Fuera de esos rangos, el sistema entra en modo solo lectura para estudiantes y docentes.
+Esquema de Calificaciones: Se asume un modelo ponderado estándar (porcentajes de cortes o evaluaciones parciales que suman 100%) con un rango numérico predeterminado (ej. 0.0 a 5.0) y un umbral aprobatorio configurable.
+Conflictos de Horario: El sistema no debe permitir que un estudiante o un docente esté en dos aulas/grupos en la misma franja horaria.
+Modelo de Concurrencia en Matrículas: Aunque el RNF-02 pide 300 usuarios concurrentes generales, la matrícula genera picos agresivos de contención de datos (race conditions en los últimos cupos). El motor de persistencia requerirá control de concurrencia optimista/pesimista o colas de procesamiento.
+Mecanismo de Desactivación Lógica (Soft Delete): La desactivación de estudiantes y docentes (RF-03, RF-04) no implica eliminación física de la base de datos, para no romper la integridad referencial histórica de matrículas y actas.
+Evolución a Autenticación Federada: Aunque inicialmente se pide credenciales propias (usuario/contraseña), la arquitectura debe desacoplar el proveedor de identidad para soportar en el futuro SSO institucional (OAuth2 / SAML / Microsoft 365 / Google Workspace).
+3. Restricciones Técnicas y de Negocio
+Tipo	Restricción	Impacto Arquitectónico
+Técnica	Acceso exclusivo vía navegadores web modernos (RNF-12).	Se descarta el desarrollo de clientes nativos de escritorio; se exige arquitectura Web Responsive (SPA/SSR).
+Técnica	Interfaces documentadas mediante API REST (RNF-08).	Desacoplamiento estricto entre Front-End y Back-End; adopción de estándares tipo OpenAPI/Swagger.
+Técnica	Concurrencia de 300 usuarios con latencia 
+≤
+≤
+ 3 seg al percentil 95 (RNF-02).	Exige optimización de índices en BD, consultas paginadas, caching (ej. Redis) para catálogos y pooling de conexiones.
+Técnica	Canales cifrados (HTTPS) y hashing de contraseñas (RNF-01).	Obliga a terminar TLS en balanceador o proxy inverso y usar algoritmos de derivación de claves robustos (Argon2id o BCrypt).
+Negocio	Disponibilidad mensual mínima del 99.5% (RNF-03).	Máximo tolerado de 
+≈
+3.6
+≈3.6
+ horas de caída no programada al mes; demanda balanceo de carga, monitoreo activo de health checks y despliegues sin interrupción (zero-downtime).
+Negocio	Trazabilidad legal y regulatoria (RNF-10, RNF-11, RF-12).	Obligatoriedad de registros de auditoría inmutables (WORM) para alteraciones de calificaciones por implicaciones legales.
+4. Reglas de Negocio Implícitas Extraídas
+A partir del análisis profundo de los RF y RNF, se extraen las siguientes reglas que condicionan la lógica del dominio:
+RN-01 (Integridad de Cupos / Anti-Overbooking): La asignación de cupos debe ser atómica. Ningún grupo puede tener más estudiantes matriculados que su límite de cupo configurado, incluso ante solicitudes simultáneas concurrentes (RNF-07).
+RN-02 (Unicidad de Matrícula por Asignatura): Un estudiante no puede estar matriculado activamente en más de un grupo de la misma asignatura dentro del mismo periodo académico.
+RN-03 (Condición de Estado para Operar): Solo los estudiantes con estado Activo pueden ser matriculados. Solo los docentes con estado Activo pueden ser asociados a la creación de grupos de un periodo.
+RN-04 (Principio de Menor Privilegio en Calificaciones): Un docente solo puede registrar y editar notas de estudiantes que pertenezcan a los grupos donde él figure formalmente como docente titular.
+RN-05 (Cierre y Congelamiento de Calificaciones): Una vez cerrado el periodo de notas por el Coordinador, el docente pierde el permiso de edición. Cualquier cambio posterior requiere una solicitud formal y autorización de nivel administrativo con registro de auditoría estricto (RF-12).
+RN-06 (No Exposición de Datos Sensibles / Privacidad): Un estudiante únicamente puede ver su propia información de notas y horarios; no puede acceder a las listas completas ni a los resultados de sus compañeros (RNF-11).
+RN-07 (Inmutabilidad de Auditoría): Las pistas de auditoría son de solo adición (append-only); ningún usuario, ni siquiera el Administrador, puede modificar o eliminar los logs de auditoría generados.
+5. Clasificación de RNF según Atributos de Calidad (ISO/IEC 25010)
+Requerimiento	Atributo de Calidad Principal	Subcaracterística / Métrica	Enfoque de Diseño Arquitectónico
+RNF-01 Seguridad	Seguridad	Confidencialidad e Integridad	Cifrado en tránsito (TLS 1.3), cifrado en reposo para credenciales (BCrypt/Argon2) y RBAC a nivel de API.
+RNF-02 Rendimiento	Eficiencia de Desempeño	Comportamiento temporal y Capacidad	Paginación en servidor, indexación de BD, CDN para estáticos y capa de caché para lecturas repetitivas.
+RNF-03 Disponibilidad	Fiabilidad	Disponibilidad operativa	Redundancia a nivel web/API, auto-recuperación de contenedores y health checks automatizados.
+RNF-04 Escalabilidad	Capacidad / Escalabilidad	Escalabilidad horizontal	Estado de sesión desacoplado (Stateless APIs con JWT o sesiones centralizadas en Redis).
+RNF-05 Mantenibilidad	Mantenibilidad	Modularidad, Reusabilidad y Analizabilidad	Arquitectura multicapa (Clean Architecture o Hexagonal), principios SOLID, inyección de dependencias.
+RNF-06 Usabilidad	Usabilidad	Accesibilidad y Adaptabilidad	Diseño Mobile-First, cumplimiento de pautas WCAG 2.1 (AA), navegación semántica e interactividad accesible.
+RNF-07 Integridad	Fiabilidad / Integridad	Consistencia transaccional	Transacciones ACID a nivel de base de datos relacional para procesos de matrícula y actas de notas.
+RNF-08 Interoperabilidad	Interoperabilidad	Coexistencia e Intercambio de datos	Arquitectura orientada a APIs RESTful estándar, serialización JSON y documentación contractual con OpenAPI.
+RNF-09 Respaldo	Fiabilidad	Recuperabilidad	Estrategia de respaldos programados (RPO/RTO definidos), réplicas y pruebas periódicas de restauración (Disaster Recovery).
+RNF-10 Trazabilidad	Mantenibilidad / Auditabilidad	Analizabilidad	Mapeo bidireccional entre código, configuración y esquemas de datos; uso de Correlation IDs en trazas.
+RNF-11 Privacidad	Seguridad	Confidencialidad	Control de acceso basado en atributos (ABAC/RBAC) a nivel de repositorio de datos y filtros de consulta por ID de usuario.
+RNF-12 Compatibilidad	Portabilidad	Coexistencia y Adaptabilidad	Pruebas de compatibilidad multi-navegador (Chromium, Gecko, WebKit) y diseño responsivo basado en CSS Grid / Flexbox.

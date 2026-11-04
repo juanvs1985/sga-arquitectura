@@ -1,0 +1,56 @@
+Para una institución de educación superior con presupuesto moderado, la arquitectura de infraestructura debe evitar la complejidad y el alto costo de plataformas como Kubernetes multi-región, priorizando una estrategia pragmática, altamente automatizada y de costo eficiente basada en servicios administrados estándar o máquinas virtuales optimizadas con contenedores Docker.
+1. Nodos y Servicios del Despliegue
+Capa / Servicio	Componente Tecnológico	Propósito y Dimensionamiento
+Edge / CDN	Cloudflare (Plan Free/Pro)	Terminación TLS, mitigación de DDoS, WAF básico y distribución de contenido estático (SPA). Costo casi nulo.
+Frontend Web	Almacenamiento de Objetos (S3 / MinIO) + CDN	Aloja la interfaz web compilada (HTML5/JS/CSS). Elimina el consumo de CPU en servidores para servir archivos estáticos.
+Balanceador de Carga	Nginx / HAProxy o Cloud Load Balancer	Proxy inverso que distribuye tráfico HTTPS hacia los nodos del backend y monitorea health checks.
+Backend API (Monolito)	2 Instancias de Cómputo (VM o Contenedores)	Ejecutan el artefacto monolítico modular (Node.js/NestJS, Spring Boot o .NET 8). 2 vCPU y 4 GB RAM por nodo bastan para 300 concurrentes.
+Caché y Mensajería	Redis (Instancia Standalone / Docker)	Almacena listas negras de tokens JWT, control de tasa (rate limiting) y caché de catálogos académicos de solo lectura.
+Base de Datos	PostgreSQL Administrado (Primary + Standby)	Motor relacional transaccional (ej. AWS RDS db.t4g.medium o DigitalOcean Managed DB) con réplica de respaldo para conmutación por error.
+Almacenamiento Backups	Almacenamiento en Nube Fría (S3 / Wasabi / B2)	Destino externo para copias de seguridad encriptadas fuera del centro de datos principal (Regla 3-2-1).
+2. Canales de Comunicación y Controles de Seguridad
+Canales y Protocolos:
+Cliente a Edge / Balanceador: Exclusivamente HTTPS (TLS 1.3) sobre el puerto 443. Se fuerza redirección automática de HTTP (80) a HTTPS.
+Balanceador a Nodos de Backend: Red Privada Virtual (VPC) aislada mediante HTTP/2 o TLS interno.
+Backend a Base de Datos y Caché: Conexiones cifradas en tránsito vía PostgreSQL Wire Protocol con SSL (verify-full) en puerto 5432 y Redis RESP con autenticación de contraseña (AUTH) en puerto 6379, restringidas a la subred privada.
+Segmentación de Red y Firewall:
+La base de datos y la caché residen en una Subred Privada sin dirección IP pública.
+Se configuran Grupos de Seguridad / Firewall (UFW/AWS Security Groups) para que el puerto de la base de datos (5432) solo acepte tráfico proveniente de las IPs internas de los nodos de la API.
+Manejo de Contraseñas y Secretos:
+Contraseñas de Usuarios: Cifrado unidireccional irreversible mediante Argon2id (o BCrypt con factor de costo 12). Nunca se persisten ni viajan en texto plano.
+Secretos del Sistema: Las llaves criptográficas JWT, credenciales de BD y conexiones externas no se alojan en el repositorio de código; se inyectan en tiempo de arranque mediante variables de entorno seguras gestionadas por un servicio centralizado (ej. AWS Secrets Manager, Doppler o Vault).
+Gestión de Sesiones y Tokens (JWT):
+Access Token: Formato JWT de vida muy corta (15 minutos) almacenado solo en memoria del navegador del cliente (SPA).
+Refresh Token: De vida más prolongada (7 días), almacenado en una cookie con atributos HttpOnly, Secure y SameSite=Strict para prevenir ataques de Cross-Site Scripting (XSS) y CSRF. Se aplica rotación de refresh tokens en cada renovación.
+3. Estrategia de Disponibilidad (Objetivo 99,5 %)
+Un SLA del 99,5 % mensual permite un margen máximo de indisponibilidad no planificada de 
+≈
+3
+,
+65
+≈3,65
+ horas al mes. Se garantiza mediante:
+Redundancia Activo-Activo en Capa de Aplicación:
+Se despliegan dos instancias idénticas del backend detrás del balanceador de carga. Si una instancia falla o consume el 100% de memoria, el balanceador redirige el 100% del tráfico al nodo sobreviviente en menos de 5 segundos.
+Despliegues sin Interrupción (Zero-Downtime Deployments):
+Se utiliza la estrategia Rolling Update (o Blue/Green): se actualiza la Instancia 1 mientras la Instancia 2 atiende tráfico; una vez superado el health check, se conmuta y se actualiza la Instancia 2. Esto garantiza que las actualizaciones regulares no consuman el presupuesto de caída.
+Alta Disponibilidad en Base de Datos:
+Uso de un PostgreSQL con réplica de reserva sincrónica o semi-sincrónica (Standby Hot-Replica). En caso de fallo crítico en el nodo primario, el proveedor o el gestor de clúster promueve la réplica a primaria automáticamente (Failover automático en 60 a 120 segundos).
+4. Respaldo y Recuperación ante Desastres (Disaster Recovery)
+Para ajustarse al RNF-09 con métricas institucionales razonables:
+RPO (Punto de Recuperación Objetivo): 
+≤
+15
+≤15
+ minutos (máxima pérdida tolerable de datos).
+RTO (Tiempo de Recuperación Objetivo): 
+≤
+2
+≤2
+ horas (tiempo máximo para volver a estar operativos tras catástrofe).
+Procedimiento de Copias de Seguridad:
+Copias Completas Diarias: A las 01:00 AM se ejecuta un volcado completo (pg_dump consistente o snapshot de volumen de BD) comprimido y cifrado con clave simétrica AES-256.
+Archivado Continuo de WAL (Write-Ahead Logging): Los registros binarios de transacciones (WAL) se transmiten continuamente cada 10 minutos hacia un bucket de almacenamiento de objetos externo (S3/Wasabi). Esto permite Recuperación en el Punto en el Tiempo (Point-in-Time Recovery - PITR).
+Inmutabilidad y Retención: Política de retención de 30 días con política Object Lock (WORM) para evitar borrado accidental o por ransomware.
+Procedimiento de Restauración:
+Script automatizado (restore_db.sh) probado trimestralmente en un entorno de pruebas (staging). Descarga el último snapshot diario, lo aplica sobre una nueva instancia de PostgreSQL y reaplica los archivos WAL hasta el minuto previo al fallo.

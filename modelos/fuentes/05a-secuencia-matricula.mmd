@@ -1,0 +1,58 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial","fontSize":"14px","primaryColor":"#EEF2F7","primaryBorderColor":"#1F3864","primaryTextColor":"#14243F","lineColor":"#56657F","actorBkg":"#EEF2F7","actorTextColor":"#14243F","labelTextColor":"#14243F","loopTextColor":"#14243F","actorBorder":"#1F3864","noteBkgColor":"#F6EBD0","noteBorderColor":"#A87A1E","signalColor":"#14243F","signalTextColor":"#14243F","labelBoxBkgColor":"#F6EBD0","labelBoxBorderColor":"#A87A1E","altSectionBkgColor":"#F7F9FC"}}}%%
+sequenceDiagram
+    autonumber
+    actor C as Coordinador
+    participant W as Interfaz web
+    participant P as Pipeline de seguridad
+    participant MC as ControladorMatriculas
+    participant MS as ServicioMatricula
+    participant CA as IConsultaAcademica
+    participant R as RepositorioMatriculas
+    participant A as IRegistroAuditoria
+    participant BD as PostgreSQL
+
+    C->>W: Selecciona estudiante y grupo
+    W->>P: POST /api/v1/matriculas {idEstudiante, idGrupo} + JWT
+    P->>P: Valida JWT y rol COORDINADOR
+    P->>MC: Petición autorizada
+    MC->>MC: Valida formato del DTO
+    MC->>MS: matricular(idEstudiante, idGrupo)
+
+    Note over MS,CA: Validaciones previas, sin bloqueo
+    MS->>CA: estudianteActivo(idEstudiante)
+    CA-->>MS: Activo
+    MS->>CA: datosGrupo(idGrupo)
+    CA-->>MS: Asignatura, periodo, horario, fechas de matrícula
+    MS->>R: franjasDelEstudiante(idEstudiante, idPeriodo)
+    R-->>MS: Franjas ya matriculadas
+    MS->>MS: Periodo abierto (RN-11) y sin cruce de horario (RN-13)
+
+    opt Falla una validación previa
+        MS-->>MC: ReglaNegocioError
+        MC-->>W: 409 Conflict + motivo
+        W-->>C: Muestra el motivo
+    end
+
+    Note over MS,BD: Transacción con bloqueo (ADR-002)
+    MS->>R: matricularEnTransaccion(...)
+    R->>BD: BEGIN
+    R->>BD: SELECT ocupados, cupo_maximo FROM cupo_grupo WHERE id_grupo = ? FOR UPDATE
+    Note right of BD: Si otra solicitud tiene el bloqueo,<br/>espera como máximo 5 s
+    BD-->>R: ocupados, cupo_maximo
+
+    alt Sin cupo o asignatura ya matriculada
+        R->>BD: ROLLBACK
+        R-->>MS: CupoAgotado o MatriculaDuplicada
+        MS-->>MC: Error de dominio
+        MC-->>W: 409 Conflict
+        W-->>C: "Sin cupo" o "Ya matriculado"
+    else Hay cupo
+        R->>BD: INSERT matricula (si no existe) e INSERT detalle_matricula
+        R->>BD: UPDATE cupo_grupo SET ocupados = ocupados + 1
+        MS->>A: registrar(MATRICULA, usuario, estudiante, grupo)
+        A->>BD: INSERT evento_auditoria (misma transacción, ADR-005)
+        R->>BD: COMMIT
+        MS-->>MC: Matrícula creada
+        MC-->>W: 201 Created
+        W-->>C: Confirmación de matrícula
+    end

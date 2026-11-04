@@ -1,0 +1,39 @@
+Requerimientos Sin Cubrir o Cubiertos Débilmente
+RF-05 (Prerrequisitos y Correquisitos Académicos): El modelo de datos y el flujo de matrícula ignoraron por completo las dependencias entre asignaturas (árbol de prelaciones). No hay entidades ni validaciones que impidan a un estudiante inscribir "Cálculo II" sin haber aprobado "Cálculo I".
+RNF-06 (Accesibilidad WCAG 2.1 AA): Se mencionó como directriz de diseño, pero carece de soporte arquitectónico: no se definieron herramientas de verificación continua en el pipeline de CI/CD (ej. pruebas automatizadas con Axe-core o Lighthouse CI), dejando el cumplimiento a la disciplina del desarrollador de Front-End.
+RNF-10 (Trazabilidad de Requerimientos a Código): Quedó como una declaración de intenciones. No se especificó un estándar de Architecture Decision Records (ADR), versionado semántico de contratos OpenAPI ni etiquetado de commits vinculado a historias/tickets.
+RF-06 (Gestión de Infraestructura de Aulas vs. Cupos): El modelo asume que el cupo es solo una propiedad del Grupo, ignorando la capacidad física de la entidad Aula. Un grupo podría tener configurado un cupo de 40 estudiantes asignado a un aula física con capacidad máxima para 25.
+RF-10 (Generación Pesada de Reportes): El módulo de reportes lee directamente del motor de persistencia principal. En fechas críticas de cierre de actas, la generación concurrente de reportes pesados en PDF/Excel degradará el pool de conexiones transaccionales.
+2. Puntos Únicos de Falla (SPOFs)
+Balanceador de Carga Único en DMZ: Aunque se propusieron dos nodos de API, solo se ilustró un único nodo de Nginx/HAProxy. Si este balanceador sufre un fallo de proceso, agotamiento de file descriptors o kernel panic, todo el sistema queda inaccesible (violando el RNF-03 de 99,5 %).
+Instancia Única de Redis (Standalone): Si el contenedor de Redis falla:
+El control de tasa (rate limiting) queda inoperativo.
+La lista negra de JWTs se pierde en memoria, dejando vulnerables los tokens revocados.
+Si la API depende de Redis para cachear catálogos, se producirá un efecto avalancha (thundering herd) contra PostgreSQL.
+Pérdida de Auditoría por EventBus en Memoria: Si el nodo de la API sufre una caída de tensión o un error de memoria (OOM Kill) inmediatamente después de confirmar la transacción en la base de datos pero antes de que el EventBus entregue el evento a la cola asíncrona, la pista de auditoría de esa matrícula se pierde definitivamente, violando el RF-12.
+3. Riesgos de Seguridad y Privacidad
+Vulnerabilidad del Log de Auditoría ante el Administrador de BD (DBA): La tabla audit.logs reside en la misma base de datos relacional. Un DBA con privilegios de superusuario o un atacante que logre una inyección SQL a nivel administrativo puede ejecutar UPDATE o DELETE sobre las pistas de auditoría para encubrir alteraciones de calificaciones. No es un almacenamiento WORM criptográficamente demostrable.
+Ambigüedad en Usuarios con Roles Múltiples: En el modelo, UsuarioRol es M:N. Si un usuario es simultáneamente Docente de un departamento y Estudiante de posgrado, el diseño no contempla un mecanismo de Contexto de Sesión Activo. Un estudiante-docente podría interactuar con endpoints de calificaciones sin una validación estricta del perfil con el que inició la sesión actual.
+Falta de Anonimización en Calificaciones (RNF-11): Los endpoints exponen directamente la relación EstudianteId 
+↔
+↔
+ Nota. No se contemplaron esquemas de calificación a ciegas (blind grading), lo que expone a la institución a riesgos de sesgo o filtración de datos sensibles de rendimiento académico.
+4. Límites de Escalabilidad
+Contención Extrema en el Cerrojo de Fila (SELECT ... FOR UPDATE):
+El cuello de botella: Si se abren las matrículas a las 08:00 AM y 250 de los 300 usuarios intentan matricularse simultáneamente en la misma asignatura popular, las 250 transacciones se serializan una a una sobre el mismo registro de la tabla Grupo.
+Consecuencia: Aunque la latencia de una transacción individual sea de 15 ms, una cola de 200 transacciones esperando por el mismo lock acumulará demoras de más de 3 segundos, disparando timeouts y superando el límite del RNF-02.
+Agotamiento del Pool de Conexiones de Base de Datos:
+PostgreSQL utiliza un modelo de un proceso por conexión (fork). Dos instancias de API abriendo conexiones concurrentes contra un motor moderado pueden agotar rápidamente el parámetro max_connections (típicamente 100-200 conexiones en servidores modestos) si no se interpone un connection pooler transaccional como PgBouncer.
+Techo Vertical del Monolito: Toda la carga (escrituras críticas de matrícula, subida de notas, analítica pesada y autenticación) compite por la CPU y el I/O del mismo motor de base de datos primario.
+5. Decisiones que Requieren Validación Adicional y Planes de Prueba
+Decisión Arquitectónica Crítica	Riesgo Asociado	Plan de Validación Propuesto
+Bloqueo Pesimista en Cupos (FOR UPDATE)	Deadlocks, colas de espera excesivas y agotamiento de conexiones en picos de alta demanda.	Prueba de Concurrencia Extrema: Ejecutar una prueba con herramientas como k6 o Gatling simulando a 300 usuarios disparando la matrícula sobre un único grupo con 5 cupos restantes en una ventana de 2 segundos. Medir contención, latencia en P95/P99 y verificar matemáticamente cero sobrecupos.
+Resiliencia de Auditoría vía EventBus	Pérdida de eventos de auditoría por caídas abruptas del proceso.	Prueba de Caos / Falla Inyectada: Enviar un flujo continuo de matrículas y matar el proceso del contenedor (kill -9) en momentos aleatorios. Comparar registros de DetalleMatricula contra registros en audit.logs. Si hay discrepancias, rediseñar usando el Patrón Outbox Transaccional.
+RPO 
+≤
+≤
+ 15 min y RTO 
+≤
+≤
+ 2 h	Estimaciones teóricas no comprobadas sobre restauración de datos.	Simulacro de Desastre (Fire Drill): Corromper intencionalmente la base de datos en un entorno réplica, activar cronómetro y ejecutar el procedimiento de restauración desde el bucket externo aplicando Snapshots + WAL streaming hasta el último minuto.
+Dimensionamiento para 300 Concurrentes	Sobredimensionamiento o subdimensionamiento de recursos de cómputo en servidores moderados.	Prueba de Carga y Capacidad (Stress Testing): Modelar el comportamiento típico (70% lecturas de horarios/notas, 20% matrículas, 10% reportes) y elevar paulatinamente la concurrencia de 50 a 500 usuarios. Identificar el punto de degradación donde el P95 supere los 3 segundos.

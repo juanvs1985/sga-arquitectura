@@ -1,0 +1,46 @@
+%%{init: {"theme":"base","flowchart":{"nodeSpacing":35,"rankSpacing":55},"themeVariables":{"fontFamily":"Arial","fontSize":"15px","primaryColor":"#EEF2F7","primaryBorderColor":"#1F3864","primaryTextColor":"#14243F","lineColor":"#56657F","clusterBkg":"#FFFFFF","clusterBorder":"#1F3864"}}}%%
+flowchart TB
+    U["<b>Usuarios</b><br/>navegador en computador o móvil"]
+    CF["<b>Cloudflare</b><br/>DNS · TLS · WAF · anti-DDoS<br/>límite de peticiones · CDN"]
+    ST[("<b>Almacenamiento de objetos</b><br/>interfaz web compilada (SPA)")]
+
+    subgraph NUBE["Proveedor de nube · región principal"]
+        direction TB
+        subgraph PUB["Subred pública"]
+            LB["<b>Balanceador de carga</b><br/>HTTPS · health checks"]
+        end
+        subgraph PRIV["Subred privada · sin IP pública"]
+            direction LR
+            API1["<b>API SGA · nodo 1</b><br/>contenedor Docker<br/>monolito modular"]
+            API2["<b>API SGA · nodo 2</b><br/>contenedor Docker<br/>monolito modular"]
+        end
+        subgraph DATOS["Base de datos administrada · subred privada"]
+            direction LR
+            PG1[("<b>PostgreSQL primaria</b><br/>zona A")]
+            PG2[("<b>PostgreSQL réplica</b><br/>zona B")]
+        end
+        SEC["Gestor de secretos<br/>llaves JWT · credenciales"]
+    end
+
+    BK[("<b>Respaldo externo</b><br/>otra región o proveedor<br/>AES-256 · bloqueo 30 días")]
+    MON["<b>Monitoreo y alertas</b><br/>disponibilidad · registros centralizados"]
+
+    U -->|"HTTPS 443 · TLS 1.3"| CF
+    CF -->|"archivos estáticos"| ST
+    CF -->|"HTTPS /api/v1/*"| LB
+    LB -->|"HTTPS · red privada"| API1
+    LB -->|"HTTPS · red privada"| API2
+    API1 -->|"TLS 5432 · solo desde la API"| PG1
+    API2 -->|"TLS 5432 · solo desde la API"| PG1
+    PG1 <-->|"replicación síncrona<br/>conmutación automática"| PG2
+    PG1 -->|"copia diaria + WAL continuo"| BK
+    SEC -.->|"inyecta al arrancar"| API1
+    SEC -.->|"inyecta al arrancar"| API2
+    MON -.->|"verifica cada minuto"| CF
+
+    classDef edge fill:#F6EBD0,stroke:#A87A1E,color:#14243F
+    classDef app fill:#1F3864,stroke:#1F3864,color:#FFFFFF
+    classDef db fill:#E8EEF6,stroke:#56657F,color:#14243F
+    class CF,LB,SEC,MON edge
+    class API1,API2 app
+    class PG1,PG2,BK,ST db
