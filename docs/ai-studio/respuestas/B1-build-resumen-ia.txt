@@ -1,0 +1,34 @@
+Se ha construido exitosamente la aplicación web «SGA · Sistema de Gestión Académica», un prototipo navegable y reactivo de la arquitectura en monolito modular en capas para educación superior en Colombia.
+1. Arquitectura Modular en Capas Implementada
+Organizada en seis módulos dentro de src/modulos/:
+identidad/: Autenticación con JWT simulado (vigencia de 15 min y token de renovación según ADR-004), gestión de perfiles y selección de rol activo.
+academico/: Catálogo de estudiantes, docentes, programas, asignaturas, aulas con aforos, periodos y programación de grupos. Expone la interfaz IConsultaAcademica.
+matriculas/: Inscripción con validación secuencial en 5 pasos y simulación de concurrencia pesimista. Expone IConsultaMatriculas.
+calificaciones/: Libro de notas de docentes (0,0 a 5,0), flujo de borrador a publicación, bloqueo por cierre de periodo y justificación obligatoria. Expone IConsultaCalificaciones.
+reportes/: Consolidación y analítica institucional. Consume exclusivamente las interfaces de los otros módulos (desacople estricto) y exporta a CSV con codificación UTF-8 BOM.
+auditoria/: Pista inmutable (append-only) de solo lectura que registra eventos en la misma operación transaccional ACID (ADR-005). Expone IRegistroAuditoria.
+Cada módulo implementa de forma independiente sus tres capas: api.ts (contrato REST simulado /api/v1/...), dominio.ts (reglas de negocio e interfaces) y repositorio.ts (almacén aislado en memoria). Los componentes de la interfaz de usuario interactúan exclusivamente a través de los archivos api.ts.
+2. Roles, Acceso y Seguridad RBAC
+Inicio de Sesión Simulado: Acceso rápido con 4 perfiles preconfigurados:
+Administrador: admin@sga.edu.co (Acceso a Gestión Académica, Reportes, Auditoría y Arquitectura).
+Coordinador Académico: coordinador@sga.edu.co (Acceso a Gestión Académica, Matrículas, Reportes y Arquitectura).
+Docente con Doble Rol: javier.morales@sga.edu.co (Docente y Coordinador; al ingresar exige seleccionar su rol activo y permite alternarlo dinámicamente desde la barra superior).
+Estudiante: valentina.ospina@sga.edu.co (Acceso a su Horario Semanal, Asignaturas Inscritas y Calificaciones Oficiales).
+Control de Acceso: La barra lateral filtra automáticamente las opciones autorizadas. Cualquier intento de navegación forzada hacia una sección no permitida despliega la pantalla "403 · No tiene permiso".
+3. Funcionalidades Destacadas por Módulo
+Gestión Académica:
+Estudiantes y docentes con búsqueda por código o nombre, filtros por programa y estado, y desactivación mediante baja lógica (INACTIVO).
+Validación de reglas de negocio en grupos: el cupo máximo no puede exceder la capacidad física del aula y los docentes no pueden tener cruces de horario en el mismo periodo.
+Botón para cerrar notas del periodo, bloqueando futuras modificaciones de calificaciones.
+Matrículas & Demostración de Concurrencia:
+Validador secuencial en 5 pasos: 1) Estudiante activo, 2) Periodo abierto, 3) Sin cruce de horario, 4) Asignatura no repetida, 5) Cupo disponible.
+Simulación interactiva por el último cupo: Con el grupo ING-301-G1 en 29/30 cupos, lanza dos solicitudes simultáneas (Promise.all) demostrando cómo una obtiene HTTP 201 Created y la otra es rechazada con HTTP 409 Conflict (Sin cupo), explicando el funcionamiento de SELECT ... FOR UPDATE y la restricción CHECK en PostgreSQL (ADR-002).
+Calificaciones:
+El docente únicamente visualiza los grupos asignados a su código.
+Evaluaciones ponderadas al 100 %. Las notas permanecen en estado «Borrador» hasta pulsar «Publicar». Modificar una nota ya publicada exige ingresar una justificación formal obligatoria registrada en la auditoría.
+Reportes & CSV:
+Tres tipos de informes con filtros por periodo y programa: Estudiantes Matriculados, Ocupación de Grupos y Rendimiento Académico, con descarga en formato .csv compatible con Excel.
+Pista de Auditoría:
+Registro de logins, cambios de rol, matrículas, cierres de periodo y modificaciones de notas con valor anterior, valor nuevo, usuario e IP simulada.
+Página de Arquitectura & ADRs:
+Diagrama de los 6 módulos e interfaces, catálogo de endpoints REST /api/v1/..., detalle de los 5 ADRs (ADR-001 a ADR-005) y la nota visible requerida: «Prototipo con datos simulados. No representa la implementación final».
