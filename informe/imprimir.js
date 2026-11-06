@@ -6,13 +6,15 @@ const fs = require("fs");
 const path = require("path");
 
 const dir = __dirname;
-const html = "file://" + path.join(dir, "informe.html");
-const salida = path.join(dir, "Informe_Arquitectura_SGA_Juan_Pablo_Vargas.pdf");
+const v2 = process.argv[2] === "v2";
+const html = "file://" + path.join(dir, v2 ? "informe_v2.html" : "informe.html");
+const salida = path.join(dir, v2 ? "Informe_SGA_Vargas_Juan_Pablo.pdf" : "Informe_Arquitectura_SGA_Juan_Pablo_Vargas.pdf");
 const tmp = path.join(dir, ".pasada1.pdf");
 
 const opciones = {
   format: "Letter", printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true,
-  headerTemplate: '<div style="width:100%;font-family:Carlito,Calibri,sans-serif;font-size:8.5pt;color:#5a6475;padding:0 1.6cm;display:flex;justify-content:space-between"><span>Arquitectura de un Sistema de Gestión Académica</span><span class="pageNumber"></span></div>',
+  headerTemplate: v2 ? '<div style="width:100%;font-family:Carlito,Calibri,sans-serif;font-size:10pt;color:#000;padding:0 2.5cm;text-align:right"><span class="pageNumber"></span></div>'
+                     : '<div style="width:100%;font-family:Carlito,Calibri,sans-serif;font-size:8.5pt;color:#5a6475;padding:0 1.6cm;display:flex;justify-content:space-between"><span>Arquitectura de un Sistema de Gestión Académica</span><span class="pageNumber"></span></div>',
   footerTemplate: "<div></div>",
 };
 

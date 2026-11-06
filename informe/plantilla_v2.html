@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+<meta charset="utf-8">
+<title>Informe SGA</title>
+<style>
+@page { size: letter; margin: 2.5cm 2.5cm 2.5cm 2.5cm; }
+@page horizontal { size: letter landscape; margin: 2cm 2.5cm; }
+* { box-sizing: border-box; }
+html { font-family: "Carlito", "Calibri", sans-serif; font-size: 11pt; color: #000; line-height: 1.32; }
+body { margin: 0; counter-reset: h2; }
+p { margin: 0 0 8pt; text-align: justify; }
+li { margin: 0 0 4pt; text-align: justify; }
+ul, ol { margin: 0 0 8pt; padding-left: 22pt; }
+h2, h3, h4 { font-family: "Carlito", "Calibri", sans-serif; color: #000; break-after: avoid; }
+h2 { font-size: 13pt; font-weight: 700; margin: 18pt 0 8pt; break-before: page; counter-increment: h2; counter-reset: h3; }
+h2.nonum { counter-increment: none; }
+h2:not(.nonum)::before { content: counter(h2) ". "; }
+h3 { font-size: 11.5pt; font-weight: 700; margin: 14pt 0 6pt; counter-increment: h3; }
+h3:not(.nonum)::before { content: counter(h2) "." counter(h3) " "; }
+a { color: #000; }
+strong { font-weight: 700; }
+code { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; font-size: 9.5pt; }
+pre { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; font-size: 8.5pt; white-space: pre-wrap; border: 0.5pt solid #999; padding: 6pt; margin: 4pt 0 10pt; }
+
+table { width: 100%; border-collapse: collapse; font-size: 9.5pt; line-height: 1.22; margin: 4pt 0 12pt; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th, td { border: 0.5pt solid #000; padding: 3pt 4pt; vertical-align: top; text-align: left; }
+th { font-weight: 700; background: #e7e6e6; }
+td.id { white-space: nowrap; }
+.tab-num { font-weight: 700; margin: 8pt 0 0; text-align: left; }
+.tab-tit { font-style: italic; margin: 0 0 3pt; text-align: left; }
+
+figure.fig { margin: 8pt 0 12pt; break-inside: avoid; }
+figure.fig img { display: block; margin: 4pt auto; max-width: 100%; }
+.fig-num { font-weight: 700; margin: 0; text-align: left; }
+.fig-tit { font-style: italic; margin: 0 0 2pt; text-align: left; }
+.fig-nota { font-size: 9.5pt; margin: 2pt 0 0; text-align: left; }
+section.horizontal { page: horizontal; break-before: page; break-after: page; }
+section.horizontal img { width: 100% !important; max-height: 15cm; object-fit: contain; }
+
+.portada { height: 22.6cm; display: flex; flex-direction: column; justify-content: center; text-align: center; }
+.portada p { text-align: center; margin: 0 0 4pt; font-size: 12pt; }
+.portada .titulo { font-weight: 700; font-size: 14pt; margin: 2.2cm 1cm 2.2cm; }
+.portada .espacio { margin-top: 1.4cm; }
+.portada .enlaces { margin-top: 2cm; font-size: 10.5pt; }
+
+.toc-pagina h2 { break-before: page; }
+#toc { list-style: none; padding: 0; margin: 0; }
+#toc li { display: flex; align-items: baseline; gap: 3pt; margin: 0 0 3pt; text-align: left; }
+#toc li.n3 { padding-left: 18pt; }
+#toc .dots { flex: 1 1 auto; height: 4pt; transform: translateY(-2pt); min-width: 10pt; background-image: radial-gradient(circle, #000 0.55pt, transparent 0.65pt); background-size: 4pt 4pt; background-repeat: repeat-x; background-position: left bottom; }
+#toc .pg { min-width: 16pt; text-align: right; }
+
+.referencias p { padding-left: 1.27cm; text-indent: -1.27cm; text-align: left; }
+.pendiente { background: #ffff00; }
+.anexo-a table { font-size: 8.3pt; line-height: 1.15; }
+.anexo-a h3 { font-size: 11pt; margin-top: 10pt; }
+.anexo-a p { font-size: 9.5pt; }
+.capturas { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8pt 0; }
+figure.cap { width: 49%; margin: 0; break-inside: avoid; }
+figure.cap img { display: block; width: 100%; max-height: 10.6cm; object-fit: contain; object-position: top; border: 0.5pt solid #999; }
+figure.cap figcaption { font-size: 8.5pt; text-align: center; margin-top: 2pt; }
+pre.prompt { break-inside: auto; }
+</style>
+</head>
+<body>
+{{CUERPO}}
+<script>
+(function () {
+  document.querySelectorAll("td").forEach(td => { if (/^(RF|RNF|CU|ADR|RN|R|S|P)-\d+$/.test(td.textContent.trim())) td.classList.add("id"); });
+  let n = 0;
+  document.querySelectorAll("table").forEach(t => {
+    if (t.closest(".anexo-a")) return;
+    n++;
+    let hh = t.previousElementSibling;
+    while (hh && !/^H[234]$/.test(hh.tagName)) hh = hh.previousElementSibling;
+    let titulo = hh ? hh.textContent : "Tabla";
+    const prev = t.previousElementSibling;
+    if (prev && prev.tagName === "P" && prev.textContent.trim().endsWith(":") && prev.textContent.length < 160) titulo = prev.textContent.trim().replace(/:$/, "");
+    const a = document.createElement("p"); a.className = "tab-num"; a.textContent = "Tabla " + n;
+    const b = document.createElement("p"); b.className = "tab-tit"; b.textContent = titulo;
+    t.before(a, b);
+  });
+  let x = 0, y = 0;
+  const toc = document.getElementById("toc");
+  document.querySelectorAll("h2, h3").forEach((h, i) => {
+    if (h.closest(".toc-pagina") || h.closest(".anexo-a")) return;
+    const nonum = h.classList.contains("nonum");
+    let et = h.textContent;
+    if (h.tagName === "H2") { if (!nonum) { x++; y = 0; et = x + ". " + et; } }
+    else { if (nonum) return; y++; et = x + "." + y + " " + et; }
+    const li = document.createElement("li"); li.className = h.tagName === "H2" ? "n2" : "n3";
+    li.dataset.texto = h.textContent;
+    li.innerHTML = '<span class="t"></span><span class="dots"></span><span class="pg"></span>';
+    li.querySelector(".t").textContent = et;
+    toc.appendChild(li);
+  });
+  window.__tocTargets = [...toc.querySelectorAll("li")].map(li => li.dataset.texto);
+})();
+window.__setPages = function (p) { document.querySelectorAll("#toc li").forEach((li, i) => { li.querySelector(".pg").textContent = p[i] || ""; }); };
+</script>
+</body>
+</html>
