@@ -17,7 +17,7 @@ Un **monolito modular en capas** (seis módulos con interfaces explícitas y un 
 
 ## Informe final
 
-**[Informe en PDF](informe/Informe_SGA_Vargas_Juan_Pablo.pdf)** · **[versión en Word](informe/Informe_SGA_Vargas_Juan_Pablo.docx)**
+**[Informe en PDF](informe/Informe_SGA_Vargas_Juan_Pablo.pdf)** · **[versión en Word](informe/Informe_SGA_Vargas_Juan_Pablo.docx)** · **[Video](https://youtu.be/XETzIcJ7SuE)**
 
 ## Contenido
 

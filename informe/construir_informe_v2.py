@@ -15,7 +15,7 @@ CAPB = DOCS / "ai-studio" / "capturas-build"
 REPO = "https://github.com/juanvs1985/sga-arquitectura"
 AISTUDIO = ("https://aistudio.google.com/app/prompts?state=%7B%22ids%22:%5B%221NcbJ3YkHGzE2xID9EykCrpI4RXmgqqe8"
             "%22%5D,%22action%22:%22open%22,%22userId%22:%22113748348275050694995%22,%22resourceKeys%22:%7B%7D%7D&usp=sharing")
-YOUTUBE = None
+YOUTUBE = "https://youtu.be/XETzIcJ7SuE"
 FECHA = "8 de noviembre de 2026"
 
 partes = []
