@@ -17,7 +17,7 @@ Un **monolito modular en capas** (seis módulos con interfaces explícitas y un 
 
 ## Informe final
 
-**[Informe en PDF](informe/Informe_Arquitectura_SGA_Juan_Pablo_Vargas.pdf)** · se genera con `python3 informe/construir_informe.py` y `node informe/imprimir.js`.
+**[Informe en PDF](informe/Informe_SGA_Vargas_Juan_Pablo.pdf)** · **[versión en Word](informe/Informe_SGA_Vargas_Juan_Pablo.docx)**
 
 ## Contenido
 
